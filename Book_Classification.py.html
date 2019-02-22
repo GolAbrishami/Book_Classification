@@ -1,0 +1,537 @@
+
+# coding: utf-8
+
+# <h1>
+# Book Classification</h1>
+# <p>
+#     Golnaz Abrishami and Ada Niu<br>
+#     Professor Dana Nehoran<br>
+#     October 2018<br><p>
+
+# ## Why Book Clustring ?
+# 
+# - There exists great interest in books due to their important role in people's leisure.
+# - Reality case is, many movies are decided to be filmed or not lie on ratings of books since books generally established before movies. Users' taste or ratings on books can give movies industry some insights. Our project can also be valuable for book related organizations or stores, such as library and bookstores. When we chose this datasets, we felt that our work will be beneficial to certain groups.
+# - This book data was a real-life datasets. Ratings were found and collected from the internet.
+# - This book data was selected because it had overall complete information about books and a large data size (a total of 980k ratings, for 10,000 books, from 53,424 users, and corresponding book information such as title, author,etc.) we could work with. All users have made at least two ratings.
+
+# ## Objective
+# 
+# Our project will hopefully show ways in which county library members can share their interested books to members who have similar taste of books, in a way of enhancing communication and reading culture. <br>
+# 
+# The county library also welcome new users who wants to register for membership. When new users come, they would know which cluster/group (in a group which people share similar taste of books based on ratings) they belong to. Thus, we can recommend books that new users will hopefully enjoy based on simliar users's taste.
+# 
+# The librarians want to create better reading atmosphere for their members and get more people registered to read.
+# 
+# Our stakeholder can be librarians in city/county libraries, who want to create reading groups among their members to enhance communication and reading culture. <br> 
+# 
+# Also, When a new user comes, they can find existing members  who share similar taste with this new user, and  base on these existing members' information, recommend books that this new user will hopefully enjoy. <br>
+
+# ## Related study:
+# Book Recommender: Collaborative Filtering, Shiny by Philipp Spachtholz <br>
+# 
+# On the cleaning data of the exploratory analysis part, Philipp removed all users who rated fewer than 3 books and kept the rest. We selected random 200 users instead. He eliminated books by looking at the distribution of the book rating data. We tried to select 10 books from different genres to increase diversity of users' taste. For the clusering part, our object is user based and Philipp is more on item-item recommendation side.
+
+# In[1]:
+
+
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import seaborn as sns
+
+import pandas as pd
+import numpy as np
+import math
+from pandas import DataFrame,Series
+
+from sklearn import datasets
+from sklearn.cluster import KMeans
+from sklearn.neighbors import KNeighborsClassifier
+import sklearn.metrics as sm
+from scipy.cluster.hierarchy import linkage, dendrogram, leaves_list,fcluster
+from scipy import stats
+
+
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+
+# ### Exploring DataSet
+# We have three related data sets :
+
+# In[2]:
+
+
+to_read = pd.read_csv("to_read.csv")
+ratings = pd.read_csv("ratings.csv")
+Books = pd.read_csv("books.csv")
+
+print(ratings.shape)
+print(to_read.shape)
+print(Books.shape)
+
+
+# Ratings data set contains the rates that each user gives to books. 
+# It has three numeric columns which are :
+
+# In[3]:
+
+
+ratings.head(5)
+
+
+# In[4]:
+
+
+ratings.dtypes
+
+
+# To read data set is the list of the books that readers has not yet read, but they are interested in those books.
+# It has two numeric columns:
+
+# In[5]:
+
+
+to_read.head(5)
+
+
+# Books data set has the inoformation about the books, like names, isbn numbers, ratings, authors, and images of books. Books columns are combination of numeric and characters obeservations.
+# Because our objective in this project is useres, so we just use title of the books from the Books table.
+
+# In[6]:
+
+
+Books.dtypes
+
+
+# In[7]:
+
+
+Books.head(3)
+
+
+# In[8]:
+
+
+Books[Books.original_title=="The Hunger Games"]
+
+
+# # Data Cleaning & Wrangling
+
+# 1. We add a rating column to to_read tables, and set it to zero:
+
+# In[9]:
+
+
+to_read["rating"]=0
+to_read.head(2)
+
+
+# In[10]:
+
+
+to_read.dtypes
+
+
+# 2. We concatinate to_read and ratings data sets by user_id. Meanwhile, we drop NaNs :
+
+# In[11]:
+
+
+con=pd.concat([to_read,ratings])
+con=con.dropna()
+print("\nThe size of the data set is :",con.shape)
+con.head(3)
+
+
+# In[12]:
+
+
+con.dtypes
+
+
+# 3. Because our objective is users, we convert the user_id to the table index. In other words, we make our data set user base. We use aggfunc to handle duplicate data. If an user rated the same book twice, it would consider the maximum value for the duplicates.
+
+# In[13]:
+
+
+new_df = con.pivot_table(index='user_id', columns='book_id', values='rating',aggfunc=np.max)
+print("\nThe size of the new data set is :",new_df.shape)
+new_df.head(3)
+
+
+# 4. Again, we convert the pivot table to the dataframe, so we can add furthur new columns rather than book_ids, and drop the user_id :
+
+# In[14]:
+
+
+new_df1 = DataFrame(new_df.to_records())
+new_df1.head(3)
+
+
+# In[15]:
+
+
+new_df1.drop('user_id', axis=1, inplace=True)
+new_df1.shape
+
+
+# In[16]:
+
+
+new_df1.head(3)
+
+
+# 5. For increase our dataset efficiency, we reduce the number of our columns(books) to ten. We try to select our books from different genres to generate diverse interests.
+
+# In[17]:
+
+
+bl= np.array([437,1312,1525,898,372,3,2,12,699,1312])
+new_df_tb=(new_df1.iloc[:,[i for i in bl] ])
+new_df_tb.columns=Books.loc[[Books.book_id[i] for i in bl],"original_title"]
+print("\nThe size of the new data set is :",new_df_tb.shape)
+new_df_tb.head()
+
+
+# 6. We randomly select 200 users. By reducing our data set dimension, the operations and analysis would be faster and easier. We seed our seed, random_state, to 222.
+
+# In[18]:
+
+
+usr_df = new_df_tb.sample(200,random_state=222)
+print("\nNow the size of the data set is reduced to :",usr_df.shape)
+usr_df.head(5)
+
+
+# 6. We convert the rating of to_read books to the mean of the whole rates a user ranks books, then we assign zero to all NaNs which are the books that user has not read and is interested in reading it.
+
+# In[19]:
+
+
+def cleaning(usr_df):
+    m=round(usr_df.median(axis=1),1)
+    for i in (np.arange(len(usr_df))):
+        for j in np.arange(10):
+            if usr_df.iloc[i,j]==0:
+                 usr_df.iloc[i,j]=m.iloc[i]
+            if pd.isnull(usr_df.iloc[i,j])==True: 
+                usr_df.iloc[i,j]=0
+if __name__ == "__main__":
+    cleaning(usr_df)
+
+
+# In[20]:
+
+
+print("\nNow we have %d Nan in our data set."%(usr_df.isnull().values.sum()))
+print(usr_df.shape)
+usr_df.head(10)
+
+
+# 7. Because we have assigned zero to to_read books, dropna function does not drop rows that at the same time have zeros and Nans. So, we just keep rows with has at least one non zero value.
+
+# In[21]:
+
+
+usr_df=usr_df[(usr_df > 0).any(axis=1)]
+print("\nNow the size of the data set is reduced to :",usr_df.shape)
+
+
+# ### Adding columns:
+# We added two columns:
+# 1. Mean which shows the mean of each user's rating.
+# 2. BN which shows how many books each user has read.
+
+# In[22]:
+
+
+usr_df["mean"]=np.round(usr_df[(usr_df>0)].mean(axis=1))
+usr_df["BN"] = usr_df.astype(bool).sum(axis=1)
+usr_df.head(3)
+
+
+# In[23]:
+
+
+usr_df=usr_df[usr_df.BN >= 3]
+
+
+# Because we have converted our data set to pivot table, our data set type were converted to float. Now we return all data types to intiger.
+
+# In[24]:
+
+
+usr_df=usr_df.astype(int)
+usr_df.dtypes
+
+
+# ## Exploring the cleaned data with visualization 
+
+# In[64]:
+
+
+just_usr_df=usr_df.iloc[:,0:10]
+usr_mean_df=usr_df.iloc[:,0:11]
+usr_mean_df.sort_index(inplace=True)
+just_usr_df.sort_index(inplace=True)
+print(just_usr_df.shape)
+#usr_mean_df.shape
+
+
+# In[27]:
+
+
+just_usr_df.plot.bar(stacked=True,figsize=(22, 13))
+plt.xlabel("\nUsers' IDs",fontsize=20)
+plt.ylabel('\nMeans of Ratings',fontsize=20)
+plt.title("\nTotal ratings of each user and user's reading information",fontsize=20
+          , color='black')
+plt.show()
+
+
+# In[29]:
+
+
+Z = linkage(just_usr_df,"average")
+plt.figure(figsize=(25,40))
+plt.title("\nClustering Users\n",fontsize=20
+          , color='black')
+D = dendrogram(Z=Z,orientation="right",leaf_font_size=9,labels= just_usr_df.index)
+
+
+# In[63]:
+
+
+hc = sns.clustermap(just_usr_df, metric="correlation", method="average", standard_scale=1,
+                    figsize=(26, 25),annot=True, annot_kws={"size": 20})
+
+hc.fig.suptitle("\nAnimal Farm and Great Gatsby are most poplular\n",fontsize=35
+          , color='black') 
+plt.show()
+
+
+# In[31]:
+
+
+import warnings
+warnings.filterwarnings('ignore')
+sns.set(style="ticks")
+rs = np.random.RandomState(11)
+rs=usr_df
+x = usr_df["mean"]
+y = usr_df["BN"]
+ax=sns.jointplot(x,y, kind="hex", color="#4CB391",height=10)
+ax.set_axis_labels( "\nRating","\nBooks Number",fontsize=20)
+plt.subplots_adjust(top=0.9)
+ax.fig.suptitle("\nRelationship between numbers of book a user rated and corresponding rating scales\n",fontsize=20) 
+ax.ax_marg_y.grid('on') 
+ax.ax_marg_x.grid('on') 
+
+
+# In[32]:
+
+
+x = usr_df["BN"]
+y = usr_df["mean"]
+for i in np.arange(11):
+    area=(12*(round(usr_df.iloc[:,i].mean(axis=0),1)))**2
+plt.scatter(x, y, s=area,color="red", alpha=0.05)
+plt.xlabel('Books Number',fontsize=20)
+plt.ylabel('Rating',fontsize=20)
+plt.title('\nRelationship between numbers of book a user rated and corresponding rating scales\n',fontsize=20)
+plt.rcParams['figure.figsize'] = [7,5]
+plt.show()
+
+
+# First of all, we could conclude that this datasets could give us some valuable information since users rated books differently instead of rating books all at a same rating. <br>
+# Second, according to the histogram, we could observe some popluar books, such as "To Kill a Mockingbird" among the sample users. The heatmap also gives us similar observations. The dendrogram gives us insights about how to cluster these sample users base on their existing ratings for selected 10 books. The headmap and cluster plot shows more detail of clustering with rating behaviors. The scatter plots show information about mean ratings with number of books that have been rated.
+# 
+# 
+# 
+# 
+
+# ## Clustering
+
+# For clustering we do not need to normalize our data set because our observations are in the same range of 0 to 5
+# Since we have no information about users other than their ratings, we use our dendrogram to predict a good clustering number. We implemented 9 clusters and 16 clusters to see which would give us a better clustering result.
+
+# In[33]:
+
+
+just_usr_df_c = just_usr_df
+
+
+# In[34]:
+
+
+Z = linkage(just_usr_df_c,"average")
+
+plt.figure(figsize=(25,60))
+plt.title("\nclustering users\n",fontsize=20
+          , color='black')
+plt.axvline(x=5.9, c='red', lw=1, linestyle='dashed')
+plt.axvline(x=5.1, c='black', lw=1, linestyle='dashed')
+
+D = dendrogram(Z=Z,orientation="right",leaf_font_size=9,labels= just_usr_df_c.index)
+
+
+# ## k-Means Approach
+
+# In[35]:
+
+
+k = 9
+model = KMeans(n_clusters = k)
+model.fit(just_usr_df_c)
+model.labels_
+
+
+# In[36]:
+
+
+for i in range(k):
+    print("\nCluster", i)
+    display(just_usr_df_c[model.labels_ == i])
+
+
+# In[37]:
+
+
+k = 16
+model = KMeans(n_clusters = k)
+model.fit(just_usr_df_c)
+model.labels_
+
+
+# In[38]:
+
+
+for i in range(k):
+    print("\nCluster", i)
+    display(just_usr_df_c[model.labels_ == i])
+
+
+# We prefer K=9 because in the more detailed clustering model, the clustering goes based on zeros. Because we do not know whether users will like the book after reading it or not, it is not a wise choice to classify users based on the books that they haven't read yet(zeros).
+# For example, users 6745,6790,8887 have the same taste of books. However, in K=16, user 6745 is seperated and cluster in class 5 with user number 14850 who ranked one of the user 6745's top rated books so low. Therefore, classification of k=9 is better than k=16
+
+# ## Hierarchical Clustering Approach
+
+# In[39]:
+
+
+k=16
+dend_clusters = fcluster(Z, k, criterion='maxclust')
+dend_clusters
+
+
+# In[40]:
+
+
+for i in range(1,k+1):
+    print("\nCluster", i)
+    display(just_usr_df_c[dend_clusters == i])
+
+
+# In[41]:
+
+
+k=9
+dend_clusters = fcluster(Z, k, criterion='maxclust')
+dend_clusters
+
+
+# In[42]:
+
+
+for i in range(1,k+1):
+    print("\nCluster", i)
+    display(just_usr_df_c[dend_clusters == i])
+
+
+# <b>K=16 is not efficent because the clustering goes based on zeros. Because we do not know whether users will like the book after reading it or not, it is not a wise choice to classify users based on the books that they haven't read yet (zeros).</b>
+# <b> For example, users in cluster 1 and 2 (k=16) have very similar taste in books, but they are in different classes just based on the books that they haven't read yet. </b>
+
+# ## kNN Clustering Approach
+
+# In[43]:
+
+
+k = 9
+model = KMeans(n_clusters = k)
+model.fit(just_usr_df_c)
+model.labels_
+just_usr_df_c["Class"]=model.labels_
+for i in range(k):
+    print("\nCluster", i)
+    display(just_usr_df_c[model.labels_ == i])
+
+
+# In[44]:
+
+
+just_usr_df_c.columns=["BHTime","NaturalSelection","Whatif","SelfishGene","SHEverything"
+                     ,"GreatGatsby","Mockingbird","AnimalFarm","ConstantPrincess","MsDallowy","Class"]
+
+
+# In[45]:
+
+
+from sklearn.neighbors import KNeighborsClassifier
+knn = KNeighborsClassifier(n_neighbors =8 , p = 2)# p=2 for euclidean distance
+X=just_usr_df_c[just_usr_df_c.columns[[0,1,2,3,4,5,6,7,8,9]]]
+Y= just_usr_df_c.iloc[:,[10]]
+knn.fit(X,Y)
+
+
+# In[46]:
+
+
+just_usr_df_c.columns
+
+
+# In[47]:
+
+
+classification = ["0","1","2","3","4","5","6","7","8"]
+
+print("\nIf you have read following books, rank them from one to five, otherwise put zero:")
+BHTime = float(input("A Brief History of Time(1/5) = "))
+NaturalSelection = float(input("Natural Selection (1/5) = "))
+Whaif = float(input("What If?: Serious Scientific Answers to Absurd Hypothetical Questions (1/5) = "))
+SelfishGene = float(input("The Selfish Gene (1/5) = "))
+SHEverything = float(input("A Short History of Nearly Everything(1/5) = "))
+GreatGatsby = float(input("The Great Gatsby(1/5) = "))
+Mockingbird = float(input("To Kill a Mockingbird (1/5) = "))
+AnimalFarm = float(input("Animal Farm (1/5) = "))
+ConstantPrincess = float(input("The Constant Princess (1/5) = "))
+MrsDalloway = float(input("Mrs Dalloway (1/5) = "))
+
+
+data_class = knn.predict(np.array([BHTime,NaturalSelection,Whaif,SelfishGene,SHEverything,GreatGatsby,
+       Mockingbird,AnimalFarm, ConstantPrincess,MrsDalloway]).reshape(1, -1))[0]
+print("\nUser is in the class %s"%classification[data_class])
+
+
+# In KNN model we select K=9 from K mean clustering, and creat a column called Class, which shows the class of all users according K-Means fit model.
+# In KNN prediction model, we ask users to rate our books form 1 to 5 or 0 if they did not heard about a book. Then, we return a class number in which users belong to.
+
+# ## Outcome
+
+# From our clustering model, we could observe existing users' interest. Most of the users like fictions (such as "To Kill a Mockingbird", "Animal Farm", "The Great Gatsby") and rated them high. Few people like books related to life science or history topic. <br>
+# 
+# In this case, it would be a good idea for the librarians to organize weekly/ monthly book meetup events related to fictions since the result has shown majority users have great interested in this genre. A booklist of new fictions, science or history books could be printed out as flyers at the front desk for reference and recommendations. <br>
+# 
+# When new users come, we can derive which cluster they belong to by asking them to rate these 10 books, and thus, give them fairly good recommendation about books and future events information.
+
+# ## Report
+
+# Our project's goal is to give our stakeholder (librarians in county libraries), who want to enhance communication and reading culture among their existing members, some insights to plan book events or recommendations for a booklist. Also, When a new user comes, they can find existing members who share a similar taste with this new user, and base on these existing members' information, recommend books that this new user will hopefully enjoy. <br>
+#   
+# 
+# When this project was first started, we understood the datasets was extremely large (10k books and nearly 1 million users) and required many steps of data cleaning. To tackle this problem, We randomly select 200 users to reduce our dataset dimension and make our operations and analysis more efficient. By restricting users who have rated more than twice, we could increase the quality of users' ratings. For increase our dataset efficiency, we tried to selected ten from different genres to generate diverse interests. Besides, we eliminated duplicated data and constructed a fairly good user-item table to be prepared for future clustering analysis. <br>
+# 
+# For our visualization part, the plots validate our selection of datasets and reasons for data cleanings. Moreover, the visualization gives us detail information about how to cluster our existing users and new users. <br>
+# 
+# We implemented different size of clusters and landed on 9 clusters for our users, who share similar book interests. Continuing from the visualization part, we could also observe the general taste of our sample users that majority users like fictions and few people like science or history related books. Last, we asked new users to rate selected 10 books to cluster them into one of the nine clusters. <br>
+# 
+# In all, we could conclude that our project well served our initial goal and provided our stakeholders with valuable information. 
