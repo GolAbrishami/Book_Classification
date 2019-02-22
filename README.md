@@ -1,5 +1,5 @@
-# Book_Classification
-Classifying books based on their ratings
+# Book Classification
+
 
 ### Objective 
 
@@ -7,7 +7,7 @@ Our project will hopefully show ways in which county library members can share t
 
 ### Dataset
 
-For our goal, We have combinaed three related datasets.
+For our goal, we have combined three related datasets.
 
 ### Methods
 
